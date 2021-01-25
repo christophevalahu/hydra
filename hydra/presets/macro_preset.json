@@ -1,0 +1,15 @@
+{
+	"version" : 1.0,
+    "slider" : 
+	{
+	    "dzB" : 25,
+	    "Om" : 35,
+	    "nuSE" : -8,
+	    "SBa" : -24,
+	    "SV" : -17,
+	    "nuXY" : 1.5
+	},
+	"architecture" : 1,
+	"vnoise" : 0,
+	"vib_mode" : 0
+}
