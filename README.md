@@ -1,5 +1,7 @@
 # hydra
 
+" For every head chopped off, the Hydra would regrow two " - For every noise source solved, two more popped up.
+
 This is a software which visualizes error models for two-qubit microwave gates using trapped ions in a static magnetic field gradient.
 
 
