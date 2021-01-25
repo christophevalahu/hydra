@@ -10,6 +10,7 @@ Version history :
 To do : 
   
   - Complete HELP section
+  - Add temperature dependence, ie. imperfect sb cooling
   - Refine off-resonant coupling error model with pulse-shaping.
   - Add amplitude noise error model for CDD gates
   - Add current noise for CCWs
