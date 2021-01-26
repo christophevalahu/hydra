@@ -2,4 +2,5 @@
 hydra/build/
 hydra/dist/
 hydra/__pycache__/
+resources/
 *.spec
