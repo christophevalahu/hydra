@@ -11,7 +11,7 @@ There are two ways to run the program : execute the python code or run the execu
 
    - Executing the python code : Clone the Github repository, in a python environment run "python hydra/hydra.py"
 
-   - Running the executable : The repository is precompiled, and the executable is available for download here : https://www.dropbox.com/sh/y70tusr9bhgua8u/AADvMEADzs8YV3j4fWMzejWCa?dl=0 
+   - Running the executable : The repository is precompiled, and the executable is available for download here : https://www.dropbox.com/s/r78zxuov81bkuqm/hydra_V-1-0.exe?dl=0 
 Simply download the zip of the latest version, extract it, and run the executable called "main.exe".
 
 
