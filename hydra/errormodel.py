@@ -1,13 +1,6 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
-from matplotlib.widgets import Slider, Button, RadioButtons, CheckButtons
-
 from scipy.optimize import minimize, Bounds
 from scipy.interpolate import griddata, interp1d
-
-from ipywidgets import *
-
 
 # Constants
 MU_B = 9.27400968e-24

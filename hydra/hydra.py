@@ -1,7 +1,8 @@
 from PyQt5 import QtWidgets, uic, QtCore, QtGui
+from PyQt5.QtGui import QPixmap
 from pyqtgraph import PlotWidget
 import pyqtgraph as pg
-import sys
+import sys, os
 import numpy as np
 import errormodel as em
 import json
@@ -30,13 +31,21 @@ C3 = '#FF9912'
 C4 = '#3CAEA3'
 COLORS = [C1, C2, C3, C4, 'k']
 
-CHIP_PRESET_FILE = "presets/chip_preset.json"
-MACRO_PRESET_FILE = "presets/macro_preset.json"
+def resource_path(relative_path):
+    bundle_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
+    path_to_dat = os.path.abspath(os.path.join(bundle_dir, relative_path))
+    return path_to_dat
+    
+CHIP_PRESET_FILE = resource_path("presets\\chip_preset.json")
+MACRO_PRESET_FILE = resource_path("presets\\macro_preset.json")
 
 with open(CHIP_PRESET_FILE) as json_file:
     CHIP_PRESET_DATA = json.load(json_file)
 with open(MACRO_PRESET_FILE) as json_file:
     MACRO_PRESET_DATA = json.load(json_file)
+    
+WINDOW_UI_FILE = resource_path('window.ui')
+LEGEND_PIX_FILE = resource_path('resources\legend.png')
    
 class Trace:
     
@@ -79,7 +88,7 @@ class MainWindow(QtWidgets.QMainWindow):
         super(MainWindow, self).__init__(*args, **kwargs)
                
         #Load the UI Page     
-        uic.loadUi('window.ui', self)    
+        uic.loadUi(WINDOW_UI_FILE, self)    
         self.setWindowTitle('Hydra - 1.0')         
         
         # Innitialize Traces
@@ -123,6 +132,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.actionLoadMacro.triggered.connect(lambda : self.load_presets(MACRO_PRESET_DATA))
         self.actionSavePresetFile.triggered.connect(lambda : self.save_preset_file())
         self.actionLoadPresetFile.triggered.connect(lambda : self.load_preset_file())
+        
+        # Innitialize Legend
+        pixmapLegend = QPixmap(LEGEND_PIX_FILE)
+        self.labelLegend.setPixmap(pixmapLegend)
         
         self.update_graph()
     
@@ -216,16 +229,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sliderPower.setValue(data['slider']['Om'])
         self.labelPower.setText(str(data['slider']['Om']) + ' KHz')
         
-        self.sliderENoise.setValue(data['slider']['nuSE']*10)
+        self.sliderENoise.setValue(int(data['slider']['nuSE']*10))
         self.labelENoise.setText(str('%.2E'%(10**(data['slider']['nuSE']))))
         
-        self.sliderBAmbient.setValue(data['slider']['SBa']*10)
+        self.sliderBAmbient.setValue(int(data['slider']['SBa']*10))
         self.labelBAmbient.setText(str('%.2E'%(10**(data['slider']['SBa']))))
         
-        self.sliderVNoise.setValue(data['slider']['SV']*10)
+        self.sliderVNoise.setValue(int(data['slider']['SV']*10))
         self.labelVNoise.setText(str('%.2E'%(10**(data['slider']['SV']))))
         
-        self.sliderNuXY.setValue(data['slider']['nuXY']*10)
+        self.sliderNuXY.setValue(int(data['slider']['nuXY']*10))
         self.labelNuXY.setText(str(data['slider']['nuXY']) + ' MHz')
         
         self.comboBoxArchitecture.setCurrentIndex(data['architecture'])
@@ -344,17 +357,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sliderPower.setMinimum(25)
         self.sliderPower.setMaximum(150)
         
-        self.sliderENoise.setMinimum(-8e1)
-        self.sliderENoise.setMaximum(-4e1)
+        self.sliderENoise.setMinimum(-80)
+        self.sliderENoise.setMaximum(-40)
         
-        self.sliderBAmbient.setMinimum(-26e1)
-        self.sliderBAmbient.setMaximum(-20e1)
+        self.sliderBAmbient.setMinimum(-260)
+        self.sliderBAmbient.setMaximum(-200)
         
-        self.sliderVNoise.setMinimum(-20e1)
-        self.sliderVNoise.setMaximum(-12e1)
+        self.sliderVNoise.setMinimum(-200)
+        self.sliderVNoise.setMaximum(-120)
         
-        self.sliderNuXY.setMinimum(1e1)
-        self.sliderNuXY.setMaximum(5e1)
+        self.sliderNuXY.setMinimum(10)
+        self.sliderNuXY.setMaximum(50)
         
         self.sliderFixNu.setMinimum(100)
         self.sliderFixNu.setMaximum(500)

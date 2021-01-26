@@ -1,0 +1,5 @@
+*.pyo
+hydra/build/
+hydra/dist/
+hydra/__pycache__/
+*.spec
