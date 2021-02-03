@@ -1,5 +1,5 @@
 {
-	"version" : 1.0,
+	"version" : 1.1,
     "slider" : 
 	{
 	    "dzB" : 25,
@@ -7,7 +7,17 @@
 	    "nuSE" : -8,
 	    "SBa" : -24,
 	    "SV" : -17,
-	    "nuXY" : 1.5
+	    "nuXY" : 1.5,
+		"chi" : -1.8,
+		"SA" : -12,
+		"nbar" : -1,
+		"symfluc" : 3
+	},
+	"toggles" : 
+	{
+		"amp_noise" : true, 
+		"ccw_noise" : false, 
+		"sym_fluc" : true
 	},
 	"architecture" : 1,
 	"vnoise" : 0,

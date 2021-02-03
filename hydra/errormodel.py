@@ -1,18 +1,20 @@
 import numpy as np
 from scipy.optimize import minimize, Bounds
 from scipy.interpolate import griddata, interp1d
+import datetime
 
 # Constants
-MU_B = 9.27400968e-24
-HBAR = 1.054571726e-34
-M = 2.838464e-25
-E = 1.60217657e-19
+MU_B = 9.27400968e-24 # Bohr Magneton
+MU_0 = 4*np.pi*1e-7 # Vacuum permeability, Units: N/A^2
+HBAR = 1.054571726e-34 # Plank Constant
+M = 2.838464e-25 # Mass of ytterbium 171
+E = 1.60217657e-19 # Elementary charge
 EPS0 = 8.85418782e-12
-C = 3e8
+C = 3e8 # Speed of light
 KHZ = 2*np.pi*1e3
 MHZ = 2*np.pi*1e6
 ALPHA = 1/(4*np.pi*EPS0) * E**2/(HBAR * C)
-S_TO_P_LINEWIDTH = 19.6*MHZ
+S_TO_P_LINEWIDTH = 19.6*MHZ # Linewidth of the S1/2 -> P1/2 transition in 171Yb
 
 DIST_ELECTRODE = 150e-6 # Assume typical distance to electrode for chips
 HEATING_FACTOR = 1/3 # 1/3 is typical for schemes such as the 2T MS gate or
@@ -66,9 +68,16 @@ def compute_T2(SB) :
     return 1/Gamma    
 
 def dBdV(nu, dzB, g) :
+    # Convert voltage noise to magnetic noise
     # nu : secular frequency of COM mode
     # g : in units of m^-1, describes the electrode geometry
     return E * g * dzB /M/nu**2
+    
+def dBdI(dx, z0) :
+    # Convert current noise in the CCWs to magnetic noise
+    # dx : minimum distance resolution allowable from DACs
+    # z0 : ion-chip distance
+    return dx * 9 * MU_0 / (8 *np.pi * np.sqrt(3) * z0**2)
     
     
 # ------------------------------------------
@@ -146,6 +155,77 @@ def err_offres_ps(Om, dzB, nu_c_list) :
     
     
 # ------------------------------------------
+# Amplitude Fluctuations Errors
+# ------------------------------------------    
+
+def compute_amp_PSD(chi) :
+    # Compute the PSD function of amplitude noise corresponding to an OU noise process.
+    # We model the amplitude noise PSD as white noise up to a frequency fc, followed by 1/f noise.
+    #  -> PSD(f) = A / (f^2 + f0^2), where f0 = 1e3
+    # We find A by relating the integrated area to chi, where chi is the SNR
+    
+    f0 = 1e3
+    A = chi**2 * 2 * f0 /np.pi
+    
+    def PSD(f) :
+        return A/(f**2 + f0**2)
+        
+    return PSD
+    
+def compute_noise(tgate, amp_psd) :
+    # Find the sampling frequency for the FF, and find the associated noise
+    
+    omega_dd = 2*np.pi*30e3 # Power of the continuous DD drives 
+
+    Trot = 2*np.pi/omega_dd
+    nrot = int(tgate/Trot)
+    
+    f_s = 1/tgate * nrot  #sampling frequency
+    noise = amp_psd(f_s)
+    
+    return noise
+    
+    
+def err_amp_noise(tgate, noise) :
+    # Tgate : Gate time
+    # noise : value of the amplitude PSD at relevant frequency
+    
+    omega_dd = 2*np.pi*30e3 # Power of the continuous DD drives
+    
+    return 1 - np.exp(-tgate * noise * omega_dd**2 / 2)
+    
+    
+    
+# ------------------------------------------
+# Symmetric Detuning Fluctuations Errors
+# ------------------------------------------    
+
+def err_sym(delta_frac, nbar, q, tgate) :
+    # delta_frac : Fractional detuning, ie deltas / delta0
+    # nbar : Motional temperature 
+    # q : number of loops in phase space
+    return delta_frac**2 * (tgate)**2 * (1 + 2*q*(1 + 2*nbar))/(16*q)
+
+
+def unit_gauss(x, mu, s) :
+    # Normalized gaussian distribution
+    return 1/(s*np.sqrt(2*np.pi))*np.exp(-0.5*(x-mu)**2/s**2)
+    
+def err_sym_fluc(sigma, nbar, tgate, prob_list) :
+    # sigma : Variance of symmetric detuning noise
+    # nbar : motional temperature
+    
+    delta_frac_list = np.linspace(-5*sigma, 5*sigma, 200) # create delta_frac list from -10 to 10%
+    fid_list = [err_sym(delta_frac, nbar, 1, tgate) for delta_frac in delta_frac_list]
+    
+    convolved_fids = np.multiply(fid_list, prob_list)
+    
+    fid_tot = np.trapz(convolved_fids, delta_frac_list)
+    
+    return fid_tot
+    
+    
+# ------------------------------------------
 # Total Errors
 # ------------------------------------------
 
@@ -156,13 +236,22 @@ def compute_eta(nu, dzB) :
     return 1/np.sqrt(2) * MU_B * dzB/ (HBAR * nu) * np.sqrt(HBAR/(2*M * nu))
 
     
-def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping = False, g_factor = G_FACTOR_CHIP, vib_mode = VIB_MODE_AXIAL_STR) :
+def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping = False, 
+                         g_factor = G_FACTOR_CHIP, vib_mode = VIB_MODE_AXIAL_STR, 
+                         chi = 0, dx = 0, SA = 0, nbar = 0, sym_fluc = 0) :
     # nu_c : list of COM frequencies
     
     errors_h = [] # Heating errors
     errors_d = [] # Decoherence errors
     errors_k = [] # Kerr coupling errors
     errors_o = [] # Off-res coupling errors
+    errors_a = [] # Amplitude noise errors
+    errors_s = [] # Symmetric fluctuation noise errors
+    
+    # Precompute gaussian prob distribution to speedup calculations
+    if sym_fluc != 0:
+        delta_frac_list = np.linspace(-5*sym_fluc, 5*sym_fluc, 200) # create delta_frac list from -10 to 10%
+        gauss_prob_list = [unit_gauss(delta_frac, 0, sym_fluc) for delta_frac in delta_frac_list]
     
     # Loop over ever COM frequency :
     for nu_c in nu_c_list :
@@ -199,12 +288,15 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
 
         # Calculate B-field PSD due to Voltage noise
         SBv = dBdV(nu_c, dzB, g_factor)**2 * SV
-        SBtot = SBa + SBv # Total B field noise = Voltage noise + Ambient noise
+        # Calculate B-field PSD due to Current noise in CCWs
+        SBi = dBdI(1e-8, 150e-6)**2 * SA
+        
+        SBtot = SBa + SBv + SBi# Total B field noise = Voltage noise + Ambient noise
+      
         # Compute decoherence time
         T2 = compute_T2(SBtot)
 
         errors_d += [err_decoherence(tgate, T2)]
-    
         #------------------------------
         # Compute errors due to Kerr coupling
         #------------------------------
@@ -215,19 +307,43 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
         # Calculate radial mode temperature 
         nbar_r = compute_nbar_r(nu_XY)
         
-        errors_k += [err_kerr(nu_s, eta_s, Om, nu_XY, nbar_r, STR_TEMP, Kcoeff)]
+        errors_k += [err_kerr(nu_s, eta_s, Om, nu_XY, nbar_r, nbar, Kcoeff)]
+        
+        #------------------------------
+        # Compute errors due to Amplitude noise
+        #------------------------------
+        
+        if chi != 0 :
+            # Calculate the PSD of the amplitude noise
+            amp_psd = compute_amp_PSD(chi)
+            
+            # Extract the relevant noise value 
+            amp_noise = compute_noise(tgate, amp_psd)
+            
+            # Find infidelity due to amplitude noise
+            errors_a += [err_amp_noise(tgate, amp_noise)]
+        else : errors_a += [0]
+        
+        #------------------------------
+        # Compute errors due to symmetric fluctuations
+        #------------------------------
+        if sym_fluc != 0 :
+            errors_s += [err_sym_fluc(sym_fluc, nbar, tgate, gauss_prob_list)]
+        else  : errors_s += [0]
+        
         
     #------------------------------
     # Compute errors due to off-resonant coupling
     #------------------------------
-
+ 
     # Using pulse shaping or not?
     if pulse_shaping :
         errors_o = err_offres_ps(Om, dzB, nu_c_list)
     else :    
         errors_o = error_offres(Om, nu_c_list)
+    
         
-    return np.array(errors_h), np.array(errors_d), np.array(errors_k), np.array(errors_o)
+    return np.array(errors_h), np.array(errors_d), np.array(errors_k), np.array(errors_o), np.array(errors_a), np.array(errors_s)
     
 # ------------------------------------------
 # Optimize Fidelities
