@@ -24,12 +24,22 @@ G_FACTOR_CHIP = 50.10 # Geometric factor for voltage noise found by numerically
                # simulating chip geometries.
 G_FACTOR_MACRO = 140    
 
-STR_TEMP = 0.2 # Temperature of STR mode, assuming sideband cooling
+X_RESOLUTION_DAC = 4e-9 # Ion's position resolution allowable with DAC
     
 VIB_MODE_AXIAL_STR = 0
 VIB_MODE_AXIAL_COM = 1
 VIB_MODE_RADIAL_STR = 2
 VIB_MODE_RADIAL_COM = 3
+
+    
+# ------------------------------------------
+# General functiosn
+# ------------------------------------------
+
+def compute_tgate(nu, dzB, Om) :
+    eta = compute_eta(nu, dzB)
+    tgate = np.pi/eta/Om
+    return tgate * GATE_TIME_COST
     
 # ------------------------------------------
 # Heating errors 
@@ -77,23 +87,19 @@ def dBdI(dx, z0) :
     # Convert current noise in the CCWs to magnetic noise
     # dx : minimum distance resolution allowable from DACs
     # z0 : ion-chip distance
-    return dx * 9 * MU_0 / (8 *np.pi * np.sqrt(3) * z0**2)
-    
-    
+    return dx * 1.6827e-5 / (z0) **(1.78) / 10
+   
 # ------------------------------------------
-# Kerr Errors
+# Kerr Coupling
 # ------------------------------------------
-    
-def err_kerr(nu_s, eta_s, Om, nu_XY, nbar_r, nbar_s, K) :
-    # nu_s : STR mode frequency
-    # eta_s : STR mode Lamb-Dicke parameter
-    # Om : MS sideband field power
-    # nu_XY : Radial mode frequency
-    # nbar_r : Radial mode temperature
-    # nbar_s : STR mode temperature
+     
+def kerr_trapfluc_variance(K, nbar_r) :
+    # Calculate the variance of trap frequency fluctuations due to 
+    # Kerr coupling induced noise
     # K : Kerr coupling coefficient
-    return K**2 * nbar_r * (2*nbar_r + 1) * (np.pi/eta_s/Om)**2 * (1 + 2*(1 + 2*nbar_s)/16)    
-
+    # nbar_r : Radial mode temperature
+    return K**2 * nbar_r * (2*nbar_r + 1)
+    
 def coefficientKerr(nu_s, nu_XY) :
     # nu_s : STR mode frequency
     # nu_XY : Radial mode frequency
@@ -102,12 +108,20 @@ def coefficientKerr(nu_s, nu_XY) :
     nu_r = np.sqrt(nu_XY**2 - nu_c**2)
     
     return - nu_s * (0.5 + nu_s**2/2/(4*nu_r**2 - nu_s**2)) * (nu_c/nu_r) * (2*HBAR*nu_c/(ALPHA**2*M * C**2))**(1/3)
-   
 
 def compute_nbar_r(nu_XY) :
     # nu_XY : Radial mode frequency
     return S_TO_P_LINEWIDTH/2/nu_XY    
 
+# ------------------------------------------
+# Trap frequency fluctuations errors
+# ------------------------------------------    
+
+def err_trap_fluc(var, nbar, tgate) :
+    # var : Variance of trap frequency fluctuations
+    # nbar : Motional temperature 
+    # q : number of loops in phase space
+    return var * (tgate)**2 * (1 + 2*(1 + 2*nbar))/(16)   
     
 # ------------------------------------------
 # Off-resonant Errors
@@ -193,37 +207,7 @@ def err_amp_noise(tgate, noise) :
     omega_dd = 2*np.pi*30e3 # Power of the continuous DD drives
     
     return 1 - np.exp(-tgate * noise * omega_dd**2 / 2)
-    
-    
-    
-# ------------------------------------------
-# Symmetric Detuning Fluctuations Errors
-# ------------------------------------------    
-
-def err_sym(delta_frac, nbar, q, tgate) :
-    # delta_frac : Fractional detuning, ie deltas / delta0
-    # nbar : Motional temperature 
-    # q : number of loops in phase space
-    return delta_frac**2 * (tgate)**2 * (1 + 2*q*(1 + 2*nbar))/(16*q)
-
-
-def unit_gauss(x, mu, s) :
-    # Normalized gaussian distribution
-    return 1/(s*np.sqrt(2*np.pi))*np.exp(-0.5*(x-mu)**2/s**2)
-    
-def err_sym_fluc(sigma, nbar, tgate, prob_list) :
-    # sigma : Variance of symmetric detuning noise
-    # nbar : motional temperature
-    
-    delta_frac_list = np.linspace(-5*sigma, 5*sigma, 200) # create delta_frac list from -10 to 10%
-    fid_list = [err_sym(delta_frac, nbar, 1, tgate) for delta_frac in delta_frac_list]
-    
-    convolved_fids = np.multiply(fid_list, prob_list)
-    
-    fid_tot = np.trapz(convolved_fids, delta_frac_list)
-    
-    return fid_tot
-    
+        
     
 # ------------------------------------------
 # Total Errors
@@ -243,15 +227,9 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
     
     errors_h = [] # Heating errors
     errors_d = [] # Decoherence errors
-    errors_k = [] # Kerr coupling errors
+    errors_t = [] # Trap frequency fluctuation errors
     errors_o = [] # Off-res coupling errors
     errors_a = [] # Amplitude noise errors
-    errors_s = [] # Symmetric fluctuation noise errors
-    
-    # Precompute gaussian prob distribution to speedup calculations
-    if sym_fluc != 0:
-        delta_frac_list = np.linspace(-5*sym_fluc, 5*sym_fluc, 200) # create delta_frac list from -10 to 10%
-        gauss_prob_list = [unit_gauss(delta_frac, 0, sym_fluc) for delta_frac in delta_frac_list]
     
     # Loop over ever COM frequency :
     for nu_c in nu_c_list :
@@ -289,7 +267,7 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
         # Calculate B-field PSD due to Voltage noise
         SBv = dBdV(nu_c, dzB, g_factor)**2 * SV
         # Calculate B-field PSD due to Current noise in CCWs
-        SBi = dBdI(1e-8, 150e-6)**2 * SA
+        SBi = dBdI(X_RESOLUTION_DAC, DIST_ELECTRODE)**2 * SA
         
         SBtot = SBa + SBv + SBi# Total B field noise = Voltage noise + Ambient noise
       
@@ -297,8 +275,9 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
         T2 = compute_T2(SBtot)
 
         errors_d += [err_decoherence(tgate, T2)]
+        
         #------------------------------
-        # Compute errors due to Kerr coupling
+        # Compute errors due to Trap frequency fluctuations
         #------------------------------
         
         # Calculate Kerr coefficient
@@ -307,7 +286,17 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
         # Calculate radial mode temperature 
         nbar_r = compute_nbar_r(nu_XY)
         
-        errors_k += [err_kerr(nu_s, eta_s, Om, nu_XY, nbar_r, nbar, Kcoeff)]
+        # Calculate variance from Kerr coupling
+        if vib_mode is VIB_MODE_AXIAL_STR :
+            trapfluc_var_kerr = 2 * kerr_trapfluc_variance(Kcoeff, nbar_r) # Multiply by 2 to account for
+                                                                           # both radial modes
+        else :
+            trapfluc_var_kerr = 0
+        
+        # Add variance from voltage noise
+        trapfluc_var_tot = trapfluc_var_kerr + sym_fluc**2
+        
+        errors_t += [err_trap_fluc(trapfluc_var_tot, nbar, tgate)]
         
         #------------------------------
         # Compute errors due to Amplitude noise
@@ -324,14 +313,6 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
             errors_a += [err_amp_noise(tgate, amp_noise)]
         else : errors_a += [0]
         
-        #------------------------------
-        # Compute errors due to symmetric fluctuations
-        #------------------------------
-        if sym_fluc != 0 :
-            errors_s += [err_sym_fluc(sym_fluc, nbar, tgate, gauss_prob_list)]
-        else  : errors_s += [0]
-        
-        
     #------------------------------
     # Compute errors due to off-resonant coupling
     #------------------------------
@@ -343,7 +324,7 @@ def compute_total_errors(nu_c_list, Om, dzB, nuSE, SBa, SV, nu_XY, pulse_shaping
         errors_o = error_offres(Om, nu_c_list)
     
         
-    return np.array(errors_h), np.array(errors_d), np.array(errors_k), np.array(errors_o), np.array(errors_a), np.array(errors_s)
+    return np.array(errors_h), np.array(errors_d), np.array(errors_t), np.array(errors_o), np.array(errors_a)
     
 # ------------------------------------------
 # Optimize Fidelities
@@ -373,16 +354,3 @@ def optimizeFidelity(nu_c_list, err_list) :
     
     return err_min, nu_opt[0]
 
-def compute_tgate(nu, dzB, Om) :
-    eta = compute_eta(nu, dzB)
-    tgate = np.pi/eta/Om
-    return tgate * GATE_TIME_COST
-
-
-
-
-
-
-
- 
-    
