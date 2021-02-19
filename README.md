@@ -15,7 +15,12 @@ There are two ways to run the program : execute the python code or run the execu
 Simply download the zip of the latest version, extract it, and run the executable called "main.exe".
 
 
-## 2. Miscellaneous
+## 2. Documentation 
+
+Click the following link : https://imperial-college-of-london-hydra.readthedocs-hosted.com/en/latest/errormodel.html
+
+
+## 3. Miscellaneous
 
 Version history : 
 
