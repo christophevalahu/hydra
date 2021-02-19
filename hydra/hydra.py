@@ -244,7 +244,7 @@ class MainWindow(QtWidgets.QMainWindow):
         toggle_ccw_noise = self.radioBtnCCWNoise.isChecked()
         toggle_sym_fluc = self.radioBtnSymFluc.isChecked()
         
-        return {"version" : version,
+        return {"version" : VERSION,
                 "slider" : { "dzB" : dzB, "Om" : Om, "nuSE" : nuSE, "SBa" : SBa,
                              "SV" : SV, "nuXY" : nuXY, 'chi' : chi, 'SA' : SA, 
                              'nbar' : nbar, 'symfluc' : sym_fluc},
@@ -319,13 +319,12 @@ class MainWindow(QtWidgets.QMainWindow):
                      [[0.5, 2], [2, 2]],
                      [[4.5, 6], [8, 8]],
                      [[4.5, 6], [2, 2]],
-                     [[8.5, 10], [8, 8]],
-                     [[8.5, 10], [2, 2]]]
+                     [[8.5, 10], [8, 8]]]
                      
         for pos, pen in zip(pos_list, self.get_pens(COLORS[0])) : 
             self.legendWidget.plot(pos[0], pos[1], pen = pen)
                  
-        label_names = ['Heating', 'Decoherence', 'Kerr coupling', 'Off-res', 'Amp noise', 'Trap fluc']
+        label_names = ['Heating', 'Decoherence', 'Trap freq fluc', 'Off-res', 'Amp noise']
         text_items = [pg.TextItem(name, (0, 0, 0), anchor = (0, 0.5)) for name in label_names]
         
         pos_list = [(2.3, 8), (2.3, 2),
@@ -406,14 +405,11 @@ class MainWindow(QtWidgets.QMainWindow):
             sym_fluc = 2*np.pi* self.sliderSymFluc.value()
         else : sym_fluc = 0
         
-        err_h, err_d, err_k, err_o, err_a, err_s = em.compute_total_errors(self.NU_C_LIST, Om, dzB, nuSE, SBa, SV, NuXY, 
+        err_h, err_d, err_t, err_o, err_a = em.compute_total_errors(self.NU_C_LIST, Om, dzB, nuSE, SBa, SV, NuXY, 
                                                 pulse_shaping = pulse_shaping, g_factor = g_factor, 
                                                 vib_mode = vib_mode, chi = chi, dx = 1e-9, SA = SA,
                                                 nbar = nbar, sym_fluc = sym_fluc)
-        err_tot = err_h + err_d + err_a + err_s
-        
-        if vib_mode is em.VIB_MODE_AXIAL_STR : err_tot += err_k
-        else : err_k = [0] * len(err_k)
+        err_tot = err_h + err_d + err_t + err_a 
         
         if inc_offres_err and show_offres: err_tot += err_o
         elif not show_offres : err_o = [0]*len(err_o)  
@@ -440,7 +436,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #self.opt_point.setData([nu_min/KHZ], [err_min])
         
         self.traces[self.active_trace].updateTable(tgate = tgate, numin = nu_min, errmin = err_min, ndot = ndot)
-        self.traces[self.active_trace].updateErrors([err_h, err_d, err_k, err_o, err_a, err_s, err_tot])
+        self.traces[self.active_trace].updateErrors([err_h, err_d, err_t, err_o, err_a, err_tot])
         self.traces[self.active_trace].plotTrace()
         
              
